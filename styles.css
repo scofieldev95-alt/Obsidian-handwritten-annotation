@@ -307,3 +307,10 @@
   top: auto;
   bottom: 4px;
 }
+
+/* keep the toolbar in reach while scrolling down a tall page in a note */
+.hwa-embed .hwa-annotator.is-fit .hwa-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}

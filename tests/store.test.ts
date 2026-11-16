@@ -228,3 +228,22 @@ test('purge of a file another device deleted happens once', async () => {
   assert.deepEqual(await mac.purge(PURGE_AFTER_MS + 1), [id]);
   assert.deepEqual(await mac.purge(PURGE_AFTER_MS + 1), []);
 });
+
+test('a document reopened soon after closing keeps its undo history', async () => {
+  const fs = new MemFs();
+  const mac = new InkStore(fs, ROOT, 'mac00001', noErrors, 50);
+  await mac.init();
+  const id = await mac.resolve('U.pdf', pdfBytes('u'));
+  const doc = await mac.acquire(id);
+  doc.apply(1, [st('mac1')], []);
+  await mac.release(id);
+  // the embed is rebuilt (editor re-render) before the keep-alive ends
+  const again = await mac.acquire(id);
+  assert.equal(again, doc);
+  assert.equal(again.canUndo(1), true);
+  await mac.release(id);
+  await new Promise((r) => setTimeout(r, 80));
+  assert.deepEqual(mac.openFileIds(), []);
+  // saved before it was forgotten
+  assert.ok(fs.files.has(`${ROOT}/files/${id}/mac00001.json`));
+});

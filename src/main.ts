@@ -1,16 +1,16 @@
 import { Notice, Platform, Plugin, TFile, TFolder, debounce, normalizePath } from 'obsidian';
-import { InkDocument } from './model/document.ts';
 import { randomId } from './model/ids.ts';
 import { InkEmbed, pageFromSubpath, type EmbedContext } from './embed/ink-embed.ts';
 import { rerenderMarkdownViews, takeOverEmbed, takeOverExtension } from './obsidian-internals.ts';
 import { PdfSource } from './pdf/pdf-source.ts';
 import { SourceCache } from './pdf/source-cache.ts';
-import { SettingsStore, sanitizeSettings } from './settings.ts';
+import { SettingsStore, sanitizeSettings, type PluginSettings } from './settings.ts';
+import { AnnotationSettingTab } from './settings-tab.ts';
+import type { Tool } from './ink/types.ts';
 import { InkStore } from './store/store.ts';
 import { IMAGE_EXTENSIONS, ImageSource } from './image/image-source.ts';
 import type { PageSource } from './surface/annotator.ts';
 import { CORE_IMAGE_VIEW, CORE_PDF_VIEW, IMAGE_VIEW, InkFileView, PDF_VIEW } from './views/ink-file-view.ts';
-import { TEST_PAD_VIEW, TestPadView } from './views/test-pad.ts';
 
 const DEVICE_KEY = 'handwritten-annotation:device-id';
 /** How often open files check for ink from other devices. */
@@ -23,10 +23,10 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
   store!: InkStore;
   /** This device's id. Kept in local storage, which is per device and never synced. */
   deviceId!: string;
-  private padDoc: InkDocument | null = null;
   pdfCache!: SourceCache<PdfSource>;
   imageCache!: SourceCache<ImageSource>;
-  private restorers: (() => void)[] = [];
+  /** Active takeovers (our view / our embeds instead of Obsidian's), by key, with their undo. */
+  private takeovers = new Map<string, () => void>();
 
   async onload(): Promise<void> {
     this.deviceId = loadDeviceId();
@@ -36,19 +36,27 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     // Hidden folder in the vault's config folder: synced by iCloud with the vault, never shown in
     // the file list, and kept if the plugin is uninstalled and reinstalled.
     const root = normalizePath(`${this.app.vault.configDir}/handwritten-annotation`);
-    this.store = new InkStore(this.app.vault.adapter, root, this.deviceId, (err) => console.error('[Handwritten Annotation]', err));
+    this.store = new InkStore(this.app.vault.adapter, root, this.deviceId, (err) => console.error('[Handwritten Annotation]', err), 30_000);
     await this.store.init();
     this.pdfCache = new SourceCache(this.app, (bytes) => PdfSource.open(bytes));
     this.imageCache = new SourceCache(this.app, (bytes, file) => ImageSource.open(bytes, file.extension), 20_000);
 
-    this.registerView(TEST_PAD_VIEW, (leaf) => new TestPadView(leaf, this));
     this.registerView(PDF_VIEW, (leaf) => new InkFileView(leaf, this, 'pdf'));
     this.registerView(IMAGE_VIEW, (leaf) => new InkFileView(leaf, this, 'image'));
 
+    const tools: { id: Tool; name: string }[] = [
+      { id: 'pen', name: 'Pen' },
+      { id: 'highlighter', name: 'Highlighter' },
+      { id: 'eraser', name: 'Eraser' },
+      { id: 'lasso', name: 'Lasso' },
+    ];
+    for (const t of tools) {
+      this.addCommand({ id: `tool-${t.id}`, name: `Use the ${t.name.toLowerCase()}`, callback: () => this.tools.update((d) => { d.tool = t.id; }) });
+    }
     this.addCommand({
-      id: 'open-test-pad',
-      name: 'Open ink test pad',
-      callback: () => void this.openTestPad(),
+      id: 'toggle-eraser-mode',
+      name: 'Switch eraser between whole stroke and partial',
+      callback: () => this.tools.update((d) => { d.eraser.mode = d.eraser.mode === 'stroke' ? 'partial' : 'stroke'; }),
     });
     this.addCommand({
       id: 'open-in-core-viewer',
@@ -62,24 +70,13 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
       },
     });
 
-    // PDFs open in our view, and ![[file.pdf]] in notes becomes writable
-    const restoreView = takeOverExtension(this.app, 'pdf', PDF_VIEW);
-    const restoreEmbed = takeOverEmbed(this.app, 'pdf', (ctx, file, subpath) =>
-      new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
-        acquire: (f) => this.pdfCache.acquire(f),
-        openFull: (f, page) => void this.openFull(f, page),
-        pageFromSubpath,
-      }));
-    const restoreImages = IMAGE_EXTENSIONS.map((ext) =>
-      takeOverEmbed(this.app, ext, (ctx, file, subpath) =>
-        new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
-          acquire: (f) => this.imageCache.acquire(f),
-          openFull: (f) => void this.openFull(f, 1),
-        })));
-    for (const r of [restoreView, restoreEmbed, ...restoreImages]) if (r) this.restorers.push(r);
-    if (!restoreView || !restoreEmbed) {
-      new Notice('Handwritten Annotation: this version of Obsidian does not let the plugin take over PDFs. Writing on PDFs is limited.');
+    this.addSettingTab(new AnnotationSettingTab(this.app, this));
+
+    // PDFs open in our view, and ![[file.pdf]] / ![[image.png]] in notes become writable
+    if (!this.applyTakeovers(this.tools.data, false)) {
+      new Notice('Handwritten Annotation: this version of Obsidian does not let the plugin take over PDFs and images. Writing on them is limited.');
     }
+    this.register(this.tools.on((s) => this.applyTakeovers(s, true)));
 
     this.app.workspace.onLayoutReady(() => {
       rerenderMarkdownViews(this.app);
@@ -110,7 +107,8 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
   }
 
   async onunload(): Promise<void> {
-    for (const restore of this.restorers.splice(0)) restore();
+    for (const restore of this.takeovers.values()) restore();
+    this.takeovers.clear();
     rerenderMarkdownViews(this.app);
     await this.store?.flush();
     this.pdfCache?.clear();
@@ -143,10 +141,50 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     await leaf.setViewState({ type, active: true, state: { file: file.path, page } });
   }
 
-  /** In-memory ink for the test pad (kept while Obsidian runs). */
-  testPadDoc(): InkDocument {
-    this.padDoc ??= new InkDocument(this.deviceId);
-    return this.padDoc;
+  /**
+   * Take over (or give back) the PDF view and the PDF / image embeds to match the settings.
+   * Returns false if Obsidian refused one of them.
+   */
+  private applyTakeovers(s: PluginSettings, rerender: boolean): boolean {
+    const want = new Map<string, () => (() => void) | null>();
+    if (s.openPdfs) want.set('view:pdf', () => takeOverExtension(this.app, 'pdf', PDF_VIEW));
+    if (s.pdfEmbeds) {
+      want.set('embed:pdf', () => takeOverEmbed(this.app, 'pdf', (ctx, file, subpath) =>
+        new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+          acquire: (f) => this.pdfCache.acquire(f),
+          openFull: (f, page) => void this.openFull(f, page),
+          pageFromSubpath,
+        })));
+    }
+    if (s.imageEmbeds) {
+      for (const ext of IMAGE_EXTENSIONS) {
+        want.set(`embed:${ext}`, () => takeOverEmbed(this.app, ext, (ctx, file, subpath) =>
+          new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+            acquire: (f) => this.imageCache.acquire(f),
+            openFull: (f) => void this.openFull(f, 1),
+          })));
+      }
+    }
+    let changed = false;
+    let ok = true;
+    for (const [key, restore] of this.takeovers) {
+      if (want.has(key)) continue;
+      restore();
+      this.takeovers.delete(key);
+      changed = true;
+    }
+    for (const [key, take] of want) {
+      if (this.takeovers.has(key)) continue;
+      const restore = take();
+      if (restore) {
+        this.takeovers.set(key, restore);
+        changed = true;
+      } else {
+        ok = false;
+      }
+    }
+    if (changed && rerender) rerenderMarkdownViews(this.app);
+    return ok;
   }
 
   /** If another device's ink for this file hasn't arrived yet, say so instead of showing a page that looks empty. */
@@ -165,12 +203,6 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     this.registerInterval(timer);
   }
 
-  private async openTestPad(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(TEST_PAD_VIEW)[0];
-    const leaf = existing ?? this.app.workspace.getLeaf('tab');
-    if (!existing) await leaf.setViewState({ type: TEST_PAD_VIEW, active: true });
-    await this.app.workspace.revealLeaf(leaf);
-  }
 }
 
 function loadDeviceId(): string {

@@ -4,6 +4,18 @@ An Obsidian plugin for writing by hand on PDFs and images embedded in your notes
 with the file, syncs between devices through your vault (iCloud), and the original PDF or image is
 never changed. *(Working name. In development.)*
 
+## What it does
+
+- Write on `![[file.pdf]]` and `![[image.png]]` (PNG, JPG, WebP) right inside your notes, in
+  editing and reading view. PDFs show one page at a time with arrows; `![[file.pdf#page=4]]`
+  always starts on page 4, otherwise the last page you viewed (synced across devices).
+- Open a PDF from the file list and it shows your ink, with zoom (pinch, ⌘ + scroll).
+- Pen (pressure with Apple Pencil), highlighter, eraser (whole stroke or partial), lasso to move
+  ink, colours, three thicknesses, undo/redo per page.
+- Ink is saved in `.obsidian/handwritten-annotation/`, one file per device per PDF/image, so iCloud
+  never has two devices editing the same file. Renames and moves are followed; ink of a deleted
+  file is kept for 10 days.
+
 ## Development
 
 ```bash

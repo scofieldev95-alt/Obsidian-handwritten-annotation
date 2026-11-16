@@ -36,6 +36,8 @@ interface OpenDoc {
   /** mtime of each other device's file when we last read it. */
   seen: Map<string, number>;
   saveTimer: ReturnType<typeof setTimeout> | null;
+  /** Pending "forget this document" after the last user closed it. */
+  forgetTimer: ReturnType<typeof setTimeout> | null;
   dirty: boolean;
   off: () => void;
 }
@@ -65,12 +67,21 @@ export class InkStore {
   private readonly opening = new Map<string, Promise<InkDocument>>();
   private registryWrite: Promise<void> = Promise.resolve();
   private readonly onError: (err: unknown) => void;
+  /** How long a document stays loaded after its last user closed it (keeps undo across embed rebuilds). */
+  private readonly keepAliveMs: number;
 
-  constructor(adapter: StorageAdapter, root: string, deviceId: string, onError: (err: unknown) => void = console.error) {
+  constructor(
+    adapter: StorageAdapter,
+    root: string,
+    deviceId: string,
+    onError: (err: unknown) => void = console.error,
+    keepAliveMs = 0,
+  ) {
     this.adapter = adapter;
     this.root = root.replace(/\/+$/, '');
     this.deviceId = deviceId;
     this.onError = onError;
+    this.keepAliveMs = keepAliveMs;
   }
 
   async init(): Promise<void> {
@@ -91,6 +102,15 @@ export class InkStore {
       }
     }
     return out;
+  }
+
+  /** Number of (not deleted) files any device has saved ink for. */
+  annotatedCount(): number {
+    const inked = new Set<string>();
+    for (const files of this.registries.values()) for (const [id, e] of Object.entries(files)) if (e.ink) inked.add(id);
+    let n = 0;
+    for (const [id, e] of this.merged()) if (!e.deleted && inked.has(id)) n++;
+    return n;
   }
 
   /** File id for a vault path, if the file is known (and not deleted). */
@@ -224,6 +244,10 @@ export class InkStore {
     const open = this.docs.get(fileId);
     if (open) {
       open.refs++;
+      if (open.forgetTimer) {
+        clearTimeout(open.forgetTimer);
+        open.forgetTimer = null;
+      }
       return open.doc;
     }
     let p = this.opening.get(fileId);
@@ -243,10 +267,21 @@ export class InkStore {
     open.refs--;
     if (open.refs > 0) return;
     await this.saveNow(fileId);
-    if (open.refs <= 0) {
-      open.off();
-      this.docs.delete(fileId);
+    if (open.refs > 0) return;
+    if (this.keepAliveMs > 0) {
+      if (open.forgetTimer) clearTimeout(open.forgetTimer);
+      open.forgetTimer = setTimeout(() => {
+        open.forgetTimer = null;
+        if (open.refs <= 0 && this.docs.get(fileId) === open) {
+          void this.saveNow(fileId);
+          open.off();
+          this.docs.delete(fileId);
+        }
+      }, this.keepAliveMs);
+      return;
     }
+    open.off();
+    this.docs.delete(fileId);
   }
 
   /** Save everything pending now (app going to background, plugin unloading). */
@@ -287,7 +322,7 @@ export class InkStore {
         }
       }
     }
-    const open: OpenDoc = { doc, refs: 0, seen: new Map(), saveTimer: null, dirty: false, off: () => {} };
+    const open: OpenDoc = { doc, refs: 0, seen: new Map(), saveTimer: null, forgetTimer: null, dirty: false, off: () => {} };
     open.off = doc.onChange((_page, local) => {
       if (local) this.scheduleSave(fileId, open);
     });

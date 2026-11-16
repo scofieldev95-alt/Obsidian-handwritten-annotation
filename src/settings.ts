@@ -9,6 +9,12 @@ export interface PluginSettings {
   highlighterColors: string[];
   /** Let a finger draw (off: a finger scrolls, only a pen or mouse writes). */
   fingerDraw: boolean;
+  /** PDFs opened from the file list use our view. */
+  openPdfs: boolean;
+  /** ![[file.pdf]] in notes is writable. */
+  pdfEmbeds: boolean;
+  /** ![[image.png]] (png, jpg, webp) in notes is writable. */
+  imageEmbeds: boolean;
 }
 
 /** Width presets in page units (PDF points). */
@@ -24,6 +30,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   penColors: ['#1f1f1f', '#2156d1', '#d93025', '#188038', '#8e44ad'],
   highlighterColors: ['#ffe14d', '#9be37a', '#ff9ecb', '#8fd3ff', '#ffb36b'],
   fingerDraw: false,
+  openPdfs: true,
+  pdfEmbeds: true,
+  imageEmbeds: true,
 };
 
 const TOOLS: Tool[] = ['pen', 'highlighter', 'eraser', 'lasso'];
@@ -43,7 +52,9 @@ export function sanitizeSettings(raw: unknown): PluginSettings {
   if (num(r.eraser?.size, 1, 80)) d.eraser.size = r.eraser.size;
   if (colors(r.penColors)) d.penColors = r.penColors;
   if (colors(r.highlighterColors)) d.highlighterColors = r.highlighterColors;
-  if (typeof r.fingerDraw === 'boolean') d.fingerDraw = r.fingerDraw;
+  for (const key of ['fingerDraw', 'openPdfs', 'pdfEmbeds', 'imageEmbeds'] as const) {
+    if (typeof r[key] === 'boolean') d[key] = r[key];
+  }
   return d;
 }
 
