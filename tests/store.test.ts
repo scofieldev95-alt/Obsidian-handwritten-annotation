@@ -1,3 +1,4 @@
+import './setup.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { InkStore, PURGE_AFTER_MS, fingerprint, type StorageAdapter } from '../src/store/store.ts';
@@ -37,7 +38,7 @@ class MemFs implements StorageAdapter {
 }
 
 const ROOT = '.obsidian/handwritten-annotation';
-const pdfBytes = (text: string) => async () => new TextEncoder().encode(text).buffer as ArrayBuffer;
+const pdfBytes = (text: string) => async () => new TextEncoder().encode(text).buffer;
 const st = (id: string, at = 1): Stroke => ({ id, tool: 'pen', color: '#000000', width: 2, pressure: false, pts: [1, 1, 0.5, 9, 9, 0.5], at });
 const ids = (list: readonly Stroke[]) => list.map((s) => s.id);
 const noErrors = (err: unknown) => { throw err; };

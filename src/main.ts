@@ -98,21 +98,23 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
       if (this.store.openFileIds().length) void this.store.poll();
     }, POLL_MS));
     // save immediately when Obsidian goes to the background or closes (iPad, iPhone)
-    this.registerDomEvent(document, 'visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void this.store.flush();
+    this.registerDomEvent(activeDocument, 'visibilitychange', () => {
+      if (activeDocument.visibilityState === 'hidden') void this.store.flush();
       else void this.store.poll();
     });
     this.registerDomEvent(window, 'pagehide', () => void this.store.flush());
     this.registerDomEvent(window, 'focus', () => void this.store.poll());
   }
 
-  async onunload(): Promise<void> {
+  onunload(): void {
     for (const restore of this.takeovers.values()) restore();
     this.takeovers.clear();
     rerenderMarkdownViews(this.app);
-    await this.store?.flush();
-    this.pdfCache?.clear();
-    this.imageCache?.clear();
+    // save what's pending; the caches only close files once nothing uses them
+    void this.store?.flush().finally(() => {
+      this.pdfCache?.clear();
+      this.imageCache?.clear();
+    });
   }
 
   /**
@@ -150,7 +152,7 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     if (s.openPdfs) want.set('view:pdf', () => takeOverExtension(this.app, 'pdf', PDF_VIEW));
     if (s.pdfEmbeds) {
       want.set('embed:pdf', () => takeOverEmbed(this.app, 'pdf', (ctx, file, subpath) =>
-        new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+        !(file instanceof TFile) ? null : new InkEmbed(this, ctx as EmbedContext, file, subpath, {
           acquire: (f) => this.pdfCache.acquire(f),
           openFull: (f, page) => void this.openFull(f, page),
           pageFromSubpath,
@@ -159,7 +161,7 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     if (s.imageEmbeds) {
       for (const ext of IMAGE_EXTENSIONS) {
         want.set(`embed:${ext}`, () => takeOverEmbed(this.app, ext, (ctx, file, subpath) =>
-          new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+          !(file instanceof TFile) ? null : new InkEmbed(this, ctx as EmbedContext, file, subpath, {
             acquire: (f) => this.imageCache.acquire(f),
             openFull: (f) => void this.openFull(f, 1),
           })));

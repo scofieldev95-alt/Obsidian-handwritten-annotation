@@ -27,6 +27,9 @@ proto.createDiv = function (o?: Attrs) { return this.createEl('div', o); };
 proto.createSpan = function (o?: Attrs) { return this.createEl('span', o); };
 proto.empty = function () { while (this.firstChild) this.removeChild(this.firstChild); };
 proto.addClass = function (c: string) { this.classList.add(c); };
+const holder = document.createElement('div');
+(globalThis as any).createDiv = (o?: Attrs) => { const el = holder.createDiv(o); el.remove(); return el; };
+(globalThis as any).createEl = (tag: string, o?: Attrs) => { const el = holder.createEl(tag as 'div', o); el.remove(); return el; };
 
 export function setIcon(el: HTMLElement, icon: string): void {
   el.textContent = ({

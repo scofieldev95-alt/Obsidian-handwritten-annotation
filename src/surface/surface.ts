@@ -150,8 +150,7 @@ export class InkSurface {
     this.layout = opts.layout;
     this.onState = opts.onState;
 
-    this.el = document.createElement('div');
-    this.el.className = `hwa-surface is-${this.layout}`;
+    this.el = createDiv({ cls: `hwa-surface is-${this.layout}` });
     this.el.tabIndex = 0;
     this.bg = this.layer('hwa-layer-bg');
     this.hl = this.layer('hwa-layer-hl');
@@ -273,7 +272,7 @@ export class InkSurface {
     // finish a stroke in progress rather than losing it
     if (this.mode) this.finishGesture();
     this.destroyed = true;
-    cancelAnimationFrame(this.frame);
+    window.cancelAnimationFrame(this.frame);
     window.clearTimeout(this.bgTimer);
     this.bgAbort?.abort();
     this.resizeObserver.disconnect();
@@ -284,10 +283,7 @@ export class InkSurface {
   // ---- layout and camera ----
 
   private layer(cls: string): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.className = `hwa-layer ${cls}`;
-    this.el.appendChild(c);
-    return c;
+    return this.el.createEl('canvas', { cls: `hwa-layer ${cls}` });
   }
 
   private listen(target: EventTarget, type: string, fn: (e: Event) => void, opts?: AddEventListenerOptions): void {
@@ -425,7 +421,7 @@ export class InkSurface {
           const x1 = Math.min(full.w, px + pw), y1 = Math.min(full.h, py + ph);
           return { k: full.k, ox: px - x0, oy: py - y0, w: Math.max(1, Math.ceil(x1 - x0)), h: Math.max(1, Math.ceil(y1 - y0)) };
         })();
-    const canvas = document.createElement('canvas');
+    const canvas = createEl('canvas');
     canvas.width = view.w;
     canvas.height = view.h;
     const ctx = canvas.getContext('2d');
@@ -440,8 +436,8 @@ export class InkSurface {
     };
     try {
       const r = this.background.render(ctx, view, abort.signal);
-      if (r && typeof (r as Promise<void>).then === 'function') {
-        (r as Promise<void>).then(done, (err) => {
+      if (r instanceof Promise) {
+        r.then(done, (err) => {
           if (!abort.signal.aborted) console.error('[Handwritten Annotation] could not draw the page', err);
         });
       } else {
@@ -467,7 +463,7 @@ export class InkSurface {
 
   private schedule(): void {
     if (this.frame || this.destroyed) return;
-    this.frame = requestAnimationFrame(() => {
+    this.frame = window.requestAnimationFrame(() => {
       this.frame = 0;
       if (this.needBgQuick) this.drawBackgroundQuick();
       if (this.needInk) this.renderInk();

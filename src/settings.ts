@@ -42,20 +42,32 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export function sanitizeSettings(raw: unknown): PluginSettings {
   const d = structuredClone(DEFAULT_SETTINGS);
   if (!raw || typeof raw !== 'object') return d;
-  const r = raw as Record<string, any>;
-  if (TOOLS.includes(r.tool)) d.tool = r.tool;
-  if (HEX.test(r.pen?.color)) d.pen.color = r.pen.color;
-  if (num(r.pen?.width, 0.2, 20)) d.pen.width = r.pen.width;
-  if (HEX.test(r.highlighter?.color)) d.highlighter.color = r.highlighter.color;
-  if (num(r.highlighter?.width, 2, 60)) d.highlighter.width = r.highlighter.width;
-  if (r.eraser?.mode === 'stroke' || r.eraser?.mode === 'partial') d.eraser.mode = r.eraser.mode;
-  if (num(r.eraser?.size, 1, 80)) d.eraser.size = r.eraser.size;
+  const r = raw as Record<string, unknown>;
+  const pen = obj(r.pen);
+  const hl = obj(r.highlighter);
+  const eraser = obj(r.eraser);
+  if (TOOLS.includes(r.tool as Tool)) d.tool = r.tool as Tool;
+  if (hex(pen.color)) d.pen.color = pen.color;
+  if (num(pen.width, 0.2, 20)) d.pen.width = pen.width;
+  if (hex(hl.color)) d.highlighter.color = hl.color;
+  if (num(hl.width, 2, 60)) d.highlighter.width = hl.width;
+  if (eraser.mode === 'stroke' || eraser.mode === 'partial') d.eraser.mode = eraser.mode;
+  if (num(eraser.size, 1, 80)) d.eraser.size = eraser.size;
   if (colors(r.penColors)) d.penColors = r.penColors;
   if (colors(r.highlighterColors)) d.highlighterColors = r.highlighterColors;
   for (const key of ['fingerDraw', 'openPdfs', 'pdfEmbeds', 'imageEmbeds'] as const) {
-    if (typeof r[key] === 'boolean') d[key] = r[key];
+    const v = r[key];
+    if (typeof v === 'boolean') d[key] = v;
   }
   return d;
+}
+
+function obj(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+}
+
+function hex(v: unknown): v is string {
+  return typeof v === 'string' && HEX.test(v);
 }
 
 function num(v: unknown, min: number, max: number): v is number {

@@ -2,7 +2,7 @@ import { FileView, Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } 
 import type HandwrittenAnnotationPlugin from '../main.ts';
 import type { InkDocument } from '../model/document.ts';
 import { IMAGE_EXTENSIONS } from '../image/image-source.ts';
-import { Annotator, type PageSource } from '../surface/annotator.ts';
+import { Annotator } from '../surface/annotator.ts';
 
 export const PDF_VIEW = 'hwa-pdf';
 export const IMAGE_VIEW = 'hwa-image';
@@ -101,7 +101,7 @@ export class InkFileView extends FileView {
       const annotator = new Annotator(this.contentEl, {
         app: this.app,
         doc,
-        source: source as PageSource,
+        source,
         settings: this.plugin.tools,
         startPage,
         layout: 'viewport',

@@ -3,7 +3,8 @@
   "name": "Handwritten Annotation",
   "version": "0.1.0",
   "minAppVersion": "1.8.0",
-  "description": "Write by hand on PDFs and images embedded in your notes. The ink stays on the file, syncs between devices, and never changes the original.",
+  "description": "Write by hand on PDFs and images embedded in your notes. The ink stays with the file, syncs with your vault, and never changes the original.",
   "author": "scofieldev",
+  "authorUrl": "https://github.com/scofieldev95-alt",
   "isDesktopOnly": false
 }

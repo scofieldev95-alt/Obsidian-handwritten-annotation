@@ -44,8 +44,7 @@ export class Toolbar {
   constructor(settings: SettingsStore, actions: ToolbarActions) {
     this.settings = settings;
     this.actions = actions;
-    this.el = document.createElement('div');
-    this.el.className = 'hwa-toolbar';
+    this.el = createDiv({ cls: 'hwa-toolbar' });
     // the toolbar is a normal UI: never let clicks reach the editor underneath
     for (const type of ['pointerdown', 'mousedown', 'click', 'dblclick']) {
       this.el.addEventListener(type, (e) => e.stopPropagation());

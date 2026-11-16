@@ -2,7 +2,7 @@ const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 
 export function randomId(len: number): string {
   const bytes = new Uint8Array(len);
-  globalThis.crypto.getRandomValues(bytes);
+  crypto.getRandomValues(bytes);
   let s = '';
   for (const b of bytes) s += ALPHABET[b % 36];
   return s;

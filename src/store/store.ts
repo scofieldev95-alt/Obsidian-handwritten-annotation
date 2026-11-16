@@ -35,9 +35,9 @@ interface OpenDoc {
   refs: number;
   /** mtime of each other device's file when we last read it. */
   seen: Map<string, number>;
-  saveTimer: ReturnType<typeof setTimeout> | null;
+  saveTimer: number | null;
   /** Pending "forget this document" after the last user closed it. */
-  forgetTimer: ReturnType<typeof setTimeout> | null;
+  forgetTimer: number | null;
   dirty: boolean;
   off: () => void;
 }
@@ -245,7 +245,7 @@ export class InkStore {
     if (open) {
       open.refs++;
       if (open.forgetTimer) {
-        clearTimeout(open.forgetTimer);
+        window.clearTimeout(open.forgetTimer);
         open.forgetTimer = null;
       }
       return open.doc;
@@ -269,8 +269,8 @@ export class InkStore {
     await this.saveNow(fileId);
     if (open.refs > 0) return;
     if (this.keepAliveMs > 0) {
-      if (open.forgetTimer) clearTimeout(open.forgetTimer);
-      open.forgetTimer = setTimeout(() => {
+      if (open.forgetTimer) window.clearTimeout(open.forgetTimer);
+      open.forgetTimer = window.setTimeout(() => {
         open.forgetTimer = null;
         if (open.refs <= 0 && this.docs.get(fileId) === open) {
           void this.saveNow(fileId);
@@ -362,15 +362,15 @@ export class InkStore {
 
   private scheduleSave(fileId: string, open: OpenDoc): void {
     open.dirty = true;
-    if (open.saveTimer) clearTimeout(open.saveTimer);
-    open.saveTimer = setTimeout(() => void this.saveNow(fileId), SAVE_DELAY_MS);
+    if (open.saveTimer) window.clearTimeout(open.saveTimer);
+    open.saveTimer = window.setTimeout(() => void this.saveNow(fileId), SAVE_DELAY_MS);
   }
 
   private async saveNow(fileId: string): Promise<void> {
     const open = this.docs.get(fileId);
     if (!open) return;
     if (open.saveTimer) {
-      clearTimeout(open.saveTimer);
+      window.clearTimeout(open.saveTimer);
       open.saveTimer = null;
     }
     if (!open.dirty) return;
@@ -495,7 +495,7 @@ export async function fingerprint(bytes: ArrayBuffer): Promise<string> {
   new DataView(buf.buffer).setFloat64(0, size);
   buf.set(head, 8);
   buf.set(tail, 8 + head.length);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', buf);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 

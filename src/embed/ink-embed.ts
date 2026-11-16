@@ -102,7 +102,6 @@ export class InkEmbed extends Component {
       if (width > 0) this.containerEl.style.maxWidth = `${Math.max(width, 240)}px`;
       const linked = this.kind.pageFromSubpath?.(this.subpath) ?? null;
       const startPage = linked ?? doc.lastViewedPage() ?? 1;
-      const openFull = this.kind.openFull;
       this.annotator = new Annotator(this.containerEl, {
         app: this.plugin.app,
         doc,
@@ -110,7 +109,7 @@ export class InkEmbed extends Component {
         settings: this.plugin.tools,
         startPage,
         layout: 'fit',
-        openFull: openFull ? (page) => openFull(this.file, page) : undefined,
+        openFull: this.kind.openFull ? (page) => this.kind.openFull?.(this.file, page) : undefined,
         onPageChange: (page) => doc.setViewedPage(page),
       });
       void this.plugin.showSyncNotice(fileId, this.containerEl);
