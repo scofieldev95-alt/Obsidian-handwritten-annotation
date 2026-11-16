@@ -47,3 +47,67 @@ export function takeOverExtension(app: App, ext: string, viewType: string): (() 
     }
   };
 }
+
+/** Creates an embed: Obsidian passes its context, the file and the link's subpath (`#page=4`). */
+export type EmbedCreator = (ctx: unknown, file: unknown, subpath: string) => unknown;
+
+interface EmbedRegistry {
+  embedByExtension: Record<string, EmbedCreator | undefined>;
+  registerExtension(ext: string, creator: EmbedCreator): void;
+  unregisterExtension(ext: string): void;
+}
+
+function embedRegistry(app: App): EmbedRegistry | null {
+  const reg = (app as unknown as { embedRegistry?: EmbedRegistry }).embedRegistry;
+  if (!reg || typeof reg.registerExtension !== 'function' || typeof reg.unregisterExtension !== 'function' || !reg.embedByExtension) {
+    return null;
+  }
+  return reg;
+}
+
+/**
+ * Show `![[file.ext]]` embeds with our creator instead of Obsidian's. Returns a function that
+ * restores Obsidian's, or null if this Obsidian version doesn't allow it.
+ */
+export function takeOverEmbed(app: App, ext: string, creator: EmbedCreator): (() => void) | null {
+  const reg = embedRegistry(app);
+  if (!reg) return null;
+  const previous = reg.embedByExtension[ext];
+  try {
+    if (previous) reg.unregisterExtension(ext);
+    reg.registerExtension(ext, creator);
+  } catch (err) {
+    console.error(`[Handwritten Annotation] could not take over .${ext} embeds`, err);
+    try {
+      if (previous && !reg.embedByExtension[ext]) reg.registerExtension(ext, previous);
+    } catch {
+      // leave Obsidian as it is
+    }
+    return null;
+  }
+  return () => {
+    try {
+      if (reg.embedByExtension[ext] === creator) reg.unregisterExtension(ext);
+      if (previous && !reg.embedByExtension[ext]) reg.registerExtension(ext, previous);
+    } catch (err) {
+      console.error(`[Handwritten Annotation] could not restore .${ext} embeds`, err);
+    }
+  };
+}
+
+/** Re-render open notes so embeds already on screen switch to (or away from) our version. */
+export function rerenderMarkdownViews(app: App): void {
+  app.workspace.iterateAllLeaves((leaf) => {
+    const view = leaf.view as unknown as {
+      getViewType(): string;
+      previewMode?: { rerender?(full?: boolean): void };
+      editor?: { cm?: { dispatch(spec: object): void } };
+    };
+    if (view.getViewType() !== 'markdown') return;
+    try {
+      view.previewMode?.rerender?.(true);
+    } catch {
+      // not critical
+    }
+  });
+}

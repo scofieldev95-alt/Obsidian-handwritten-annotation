@@ -624,7 +624,7 @@ export class InkSurface {
     this.pinch = null;
     e.preventDefault();
     e.stopPropagation();
-    this.el.setPointerCapture(e.pointerId);
+    capture(this.el, e.pointerId);
     this.pointerId = e.pointerId;
     this.el.focus({ preventScroll: true });
 
@@ -721,7 +721,11 @@ export class InkSurface {
     if (e.pointerType === 'pen') this.lastPenTime = performance.now();
     if (e.type === 'pointerup' && this.mode === 'draw') this.addSamples(e);
     this.finishGesture();
-    if (this.el.hasPointerCapture(e.pointerId)) this.el.releasePointerCapture(e.pointerId);
+    try {
+      if (this.el.hasPointerCapture(e.pointerId)) this.el.releasePointerCapture(e.pointerId);
+    } catch {
+      // already released
+    }
   }
 
   // ---- finger pan / pinch (full-screen view) ----
@@ -730,7 +734,7 @@ export class InkSurface {
     // a palm right after the pen: ignore
     if (performance.now() - this.lastPenTime < 400) return;
     if (this.touches.size >= 2) return;
-    this.el.setPointerCapture(e.pointerId);
+    capture(this.el, e.pointerId);
     this.touches.set(e.pointerId, this.local(e));
     this.resetPinch();
   }
@@ -886,6 +890,15 @@ export class InkSurface {
     if (!p && !this.hover) return;
     this.hover = p;
     this.scheduleOverlay();
+  }
+}
+
+/** Keep receiving this pointer's events even outside the element (fails harmlessly if the pointer is gone). */
+function capture(el: HTMLElement, pointerId: number): void {
+  try {
+    el.setPointerCapture(pointerId);
+  } catch {
+    // the pointer already lifted
   }
 }
 

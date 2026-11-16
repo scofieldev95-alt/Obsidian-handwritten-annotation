@@ -1,17 +1,22 @@
 import { Notice, Plugin, TFile, debounce, normalizePath } from 'obsidian';
 import { InkDocument } from './model/document.ts';
 import { randomId } from './model/ids.ts';
-import { takeOverExtension } from './obsidian-internals.ts';
+import { InkEmbed, pageFromSubpath, type EmbedContext } from './embed/ink-embed.ts';
+import { rerenderMarkdownViews, takeOverEmbed, takeOverExtension } from './obsidian-internals.ts';
+import { PdfSource } from './pdf/pdf-source.ts';
+import { SourceCache } from './pdf/source-cache.ts';
 import { SettingsStore, sanitizeSettings } from './settings.ts';
 import { InkStore } from './store/store.ts';
-import { CORE_PDF_VIEW, PDF_VIEW, PdfInkView } from './views/pdf-view.ts';
+import { IMAGE_EXTENSIONS, ImageSource } from './image/image-source.ts';
+import type { PageSource } from './surface/annotator.ts';
+import { CORE_IMAGE_VIEW, CORE_PDF_VIEW, IMAGE_VIEW, InkFileView, PDF_VIEW } from './views/ink-file-view.ts';
 import { TEST_PAD_VIEW, TestPadView } from './views/test-pad.ts';
 
 const DEVICE_KEY = 'handwritten-annotation:device-id';
 /** How often open files check for ink from other devices. */
 const POLL_MS = 4000;
 /** Extensions whose ink we track. */
-const ANNOTATABLE = new Set(['pdf', 'png', 'jpg', 'jpeg', 'webp']);
+const ANNOTATABLE = new Set(['pdf', ...IMAGE_EXTENSIONS]);
 
 export default class HandwrittenAnnotationPlugin extends Plugin {
   tools!: SettingsStore;
@@ -19,7 +24,9 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
   /** This device's id. Kept in local storage, which is per device and never synced. */
   deviceId!: string;
   private padDoc: InkDocument | null = null;
-  private restorePdf: (() => void) | null = null;
+  pdfCache!: SourceCache<PdfSource>;
+  imageCache!: SourceCache<ImageSource>;
+  private restorers: (() => void)[] = [];
 
   async onload(): Promise<void> {
     this.deviceId = loadDeviceId();
@@ -31,9 +38,12 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     const root = normalizePath(`${this.app.vault.configDir}/handwritten-annotation`);
     this.store = new InkStore(this.app.vault.adapter, root, this.deviceId, (err) => console.error('[Handwritten Annotation]', err));
     await this.store.init();
+    this.pdfCache = new SourceCache(this.app, (bytes) => PdfSource.open(bytes));
+    this.imageCache = new SourceCache(this.app, (bytes, file) => ImageSource.open(bytes, file.extension), 20_000);
 
     this.registerView(TEST_PAD_VIEW, (leaf) => new TestPadView(leaf, this));
-    this.registerView(PDF_VIEW, (leaf) => new PdfInkView(leaf, this));
+    this.registerView(PDF_VIEW, (leaf) => new InkFileView(leaf, this, 'pdf'));
+    this.registerView(IMAGE_VIEW, (leaf) => new InkFileView(leaf, this, 'image'));
 
     this.addCommand({
       id: 'open-test-pad',
@@ -41,19 +51,38 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
       callback: () => void this.openTestPad(),
     });
     this.addCommand({
-      id: 'open-in-core-pdf-viewer',
-      name: "Open this PDF in Obsidian's PDF viewer",
+      id: 'open-in-core-viewer',
+      name: "Open this file in Obsidian's own viewer",
       checkCallback: (checking) => {
-        const view = this.app.workspace.getActiveViewOfType(PdfInkView);
+        const view = this.app.workspace.getActiveViewOfType(InkFileView);
         if (!view?.file) return false;
-        if (!checking) void view.leaf.setViewState({ type: CORE_PDF_VIEW, state: { file: view.file.path } });
+        const type = view.getViewType() === PDF_VIEW ? CORE_PDF_VIEW : CORE_IMAGE_VIEW;
+        if (!checking) void view.leaf.setViewState({ type, state: { file: view.file.path } });
         return true;
       },
     });
 
+    // PDFs open in our view, and ![[file.pdf]] in notes becomes writable
+    const restoreView = takeOverExtension(this.app, 'pdf', PDF_VIEW);
+    const restoreEmbed = takeOverEmbed(this.app, 'pdf', (ctx, file, subpath) =>
+      new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+        acquire: (f) => this.pdfCache.acquire(f),
+        openFull: (f, page) => void this.openFull(f, page),
+        pageFromSubpath,
+      }));
+    const restoreImages = IMAGE_EXTENSIONS.map((ext) =>
+      takeOverEmbed(this.app, ext, (ctx, file, subpath) =>
+        new InkEmbed(this, ctx as EmbedContext, file as TFile, subpath, {
+          acquire: (f) => this.imageCache.acquire(f),
+          openFull: (f) => void this.openFull(f, 1),
+        })));
+    for (const r of [restoreView, restoreEmbed, ...restoreImages]) if (r) this.restorers.push(r);
+    if (!restoreView || !restoreEmbed) {
+      new Notice('Handwritten Annotation: this version of Obsidian does not let the plugin take over PDFs. Writing on PDFs is limited.');
+    }
+
     this.app.workspace.onLayoutReady(() => {
-      this.restorePdf = takeOverExtension(this.app, 'pdf', PDF_VIEW);
-      if (!this.restorePdf) new Notice('Handwritten Annotation: PDFs will open in the normal viewer on this version of Obsidian.');
+      rerenderMarkdownViews(this.app);
       void this.store.purge().catch((err) => console.error('[Handwritten Annotation]', err));
     });
 
@@ -79,9 +108,23 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
   }
 
   async onunload(): Promise<void> {
-    this.restorePdf?.();
-    this.restorePdf = null;
+    for (const restore of this.restorers.splice(0)) restore();
+    rerenderMarkdownViews(this.app);
     await this.store?.flush();
+    this.pdfCache?.clear();
+    this.imageCache?.clear();
+  }
+
+  /** The pages of a PDF or image, shared through the caches. */
+  acquireSource(file: TFile, bytes?: ArrayBuffer): Promise<{ source: PageSource; release: () => void }> {
+    return file.extension.toLowerCase() === 'pdf' ? this.pdfCache.acquire(file, bytes) : this.imageCache.acquire(file, bytes);
+  }
+
+  /** Open a PDF or image full screen (in a new tab) at a page. */
+  async openFull(file: TFile, page: number): Promise<void> {
+    const type = file.extension.toLowerCase() === 'pdf' ? PDF_VIEW : IMAGE_VIEW;
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({ type, active: true, state: { file: file.path, page } });
   }
 
   /** In-memory ink for the test pad (kept while Obsidian runs). */

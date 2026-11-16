@@ -227,7 +227,7 @@
 }
 
 /* full-screen PDF view: toolbar on top, the zoomable page fills the rest */
-.hwa-pdf-view {
+.hwa-file-view {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -286,4 +286,24 @@
   font-size: var(--font-ui-small);
   color: var(--text-muted);
   z-index: 5;
+}
+
+/* ---- embeds in notes ---- */
+
+.hwa-embed {
+  display: block;
+  width: 100%;
+  position: relative;
+  cursor: default;
+}
+
+.markdown-source-view .hwa-embed .hwa-annotator,
+.markdown-preview-view .hwa-embed .hwa-annotator {
+  margin: 8px 0;
+}
+
+/* the editor's "edit link" button sits over embeds; keep it clear of our toolbar */
+.cm-embed-block:has(.hwa-embed) > .edit-block-button {
+  top: auto;
+  bottom: 4px;
 }
