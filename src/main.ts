@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, debounce, normalizePath } from 'obsidian';
+import { Notice, Platform, Plugin, TFile, TFolder, debounce, normalizePath } from 'obsidian';
 import { InkDocument } from './model/document.ts';
 import { randomId } from './model/ids.ts';
 import { InkEmbed, pageFromSubpath, type EmbedContext } from './embed/ink-embed.ts';
@@ -83,15 +83,17 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       rerenderMarkdownViews(this.app);
-      void this.store.purge().catch((err) => console.error('[Handwritten Annotation]', err));
+      void this.cleanUp();
     });
 
     // the ink follows its file
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      if (file instanceof TFile && ANNOTATABLE.has(file.extension.toLowerCase())) void this.store.renamed(oldPath, file.path);
+      if (file instanceof TFolder) void this.store.renamedFolder(oldPath, file.path);
+      else if (file instanceof TFile && ANNOTATABLE.has(file.extension.toLowerCase())) void this.store.renamed(oldPath, file.path);
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
-      if (file instanceof TFile && ANNOTATABLE.has(file.extension.toLowerCase())) void this.store.deleted(file.path);
+      if (file instanceof TFolder) void this.store.deletedFolder(file.path);
+      else if (file instanceof TFile && ANNOTATABLE.has(file.extension.toLowerCase())) void this.store.deleted(file.path);
     }));
 
     // other devices' ink arrives through iCloud: check regularly while something is open
@@ -113,6 +115,20 @@ export default class HandwrittenAnnotationPlugin extends Plugin {
     await this.store?.flush();
     this.pdfCache?.clear();
     this.imageCache?.clear();
+  }
+
+  /**
+   * Startup housekeeping: notice files deleted outside Obsidian (Mac only — on iPhone/iPad a file
+   * iCloud hasn't downloaded yet can look missing), then remove ink of files deleted 10+ days ago.
+   */
+  async cleanUp(): Promise<void> {
+    const exists = (path: string) => this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+    try {
+      if (Platform.isDesktopApp) await this.store.reconcile(exists);
+      await this.store.purge(Date.now(), exists);
+    } catch (err) {
+      console.error('[Handwritten Annotation]', err);
+    }
   }
 
   /** The pages of a PDF or image, shared through the caches. */

@@ -134,22 +134,75 @@ export class InkStore {
     return true;
   }
 
-  /** Remove ink of files deleted more than 10 days ago. Returns the purged ids. */
-  async purge(now = Date.now()): Promise<string[]> {
-    const purged: string[] = [];
+  /** A folder was renamed or moved: the ink of every file inside follows. */
+  async renamedFolder(oldPrefix: string, newPrefix: string): Promise<number> {
+    const from = withSlash(oldPrefix);
+    const to = withSlash(newPrefix);
+    let n = 0;
+    const now = Date.now();
     for (const [id, e] of this.merged()) {
-      if (!e.deleted || now - e.deleted < PURGE_AFTER_MS || this.docs.has(id)) continue;
+      if (e.deleted || !e.path.startsWith(from)) continue;
+      this.setOwnEntry(id, { ...e, path: to + e.path.slice(from.length), updated: now, ink: this.ownEntry(id)?.ink });
+      n++;
+    }
+    if (n) await this.saveRegistry();
+    return n;
+  }
+
+  /** A folder was deleted: every file inside counts as deleted (ink kept 10 days). */
+  async deletedFolder(prefix: string, now = Date.now()): Promise<number> {
+    const from = withSlash(prefix);
+    let n = 0;
+    for (const [id, e] of this.merged()) {
+      if (e.deleted || !e.path.startsWith(from)) continue;
+      this.setOwnEntry(id, { ...e, deleted: now, updated: now, ink: this.ownEntry(id)?.ink });
+      n++;
+    }
+    if (n) await this.saveRegistry();
+    return n;
+  }
+
+  /**
+   * Files that disappeared while Obsidian wasn't watching (deleted in Finder): mark them deleted so
+   * the 10-day countdown starts. Only safe where a file that is in iCloud but not downloaded still
+   * shows up as a file (the Mac); the caller decides.
+   */
+  async reconcile(exists: (path: string) => boolean, now = Date.now()): Promise<string[]> {
+    const marked: string[] = [];
+    for (const [id, e] of this.merged()) {
+      if (e.deleted || this.docs.has(id) || exists(e.path)) continue;
+      this.setOwnEntry(id, { ...e, deleted: now, updated: now, ink: this.ownEntry(id)?.ink });
+      marked.push(id);
+    }
+    if (marked.length) await this.saveRegistry();
+    return marked;
+  }
+
+  /**
+   * Remove ink of files deleted more than 10 days ago. `exists` is a last check: if a file is back
+   * at its old path (restored, or synced late), its ink is never removed. Returns the purged ids.
+   */
+  async purge(now = Date.now(), exists: (path: string) => boolean = () => false): Promise<string[]> {
+    const purged: string[] = [];
+    let changed = false;
+    for (const [id, e] of this.merged()) {
+      if (!e.deleted || now - e.deleted < PURGE_AFTER_MS || this.docs.has(id) || exists(e.path)) continue;
       try {
-        if (await this.adapter.exists(this.fileDir(id))) await this.adapter.rmdir(this.fileDir(id), true);
+        if (await this.adapter.exists(this.fileDir(id))) {
+          await this.adapter.rmdir(this.fileDir(id), true);
+          purged.push(id);
+        }
       } catch (err) {
         this.onError(err);
         continue;
       }
-      purged.push(id);
       const own = this.registries.get(this.deviceId);
-      if (own) delete own[id];
+      if (own?.[id]) {
+        delete own[id];
+        changed = true;
+      }
     }
-    if (purged.length) await this.saveRegistry();
+    if (changed) await this.saveRegistry();
     return purged;
   }
 
@@ -409,4 +462,8 @@ export async function fingerprint(bytes: ArrayBuffer): Promise<string> {
   buf.set(tail, 8 + head.length);
   const digest = await globalThis.crypto.subtle.digest('SHA-256', buf);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function withSlash(prefix: string): string {
+  return prefix.endsWith('/') ? prefix : `${prefix}/`;
 }

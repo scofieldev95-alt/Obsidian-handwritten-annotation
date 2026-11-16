@@ -171,3 +171,60 @@ test('fingerprint is stable and content-sensitive', async () => {
   assert.notEqual(a, await fingerprint(await pdfBytes('hellp')()));
   assert.equal(a.length, 64);
 });
+
+test('renaming a folder moves the ink of every file inside', async () => {
+  const fs = new MemFs();
+  const mac = await device(fs, 'mac00001');
+  const a = await mac.resolve('Course/Week 1/A.pdf', pdfBytes('a'));
+  const b = await mac.resolve('Course/B.png', pdfBytes('b'));
+  const c = await mac.resolve('Coursework/C.pdf', pdfBytes('c'));
+  assert.equal(await mac.renamedFolder('Course', 'Archive/Course'), 2);
+  assert.equal(mac.idForPath('Archive/Course/Week 1/A.pdf'), a);
+  assert.equal(mac.idForPath('Archive/Course/B.png'), b);
+  // a folder whose name merely starts the same is untouched
+  assert.equal(mac.idForPath('Coursework/C.pdf'), c);
+});
+
+test('deleting a folder starts the countdown for every file inside', async () => {
+  const fs = new MemFs();
+  const mac = await device(fs, 'mac00001');
+  await mac.resolve('Old/A.pdf', pdfBytes('a'));
+  await mac.resolve('Keep/B.pdf', pdfBytes('b'));
+  assert.equal(await mac.deletedFolder('Old', 5), 1);
+  assert.equal(mac.idForPath('Old/A.pdf'), null);
+  assert.ok(mac.idForPath('Keep/B.pdf'));
+});
+
+test('reconcile marks files missing from the vault as deleted', async () => {
+  const fs = new MemFs();
+  const mac = await device(fs, 'mac00001');
+  const gone = await mac.resolve('Gone.pdf', pdfBytes('g'));
+  await mac.resolve('Here.pdf', pdfBytes('h'));
+  assert.deepEqual(await mac.reconcile((p) => p === 'Here.pdf', 10), [gone]);
+  assert.deepEqual(await mac.reconcile((p) => p === 'Here.pdf', 20), []);
+});
+
+test('purge never removes ink of a file that is back at its path', async () => {
+  const fs = new MemFs();
+  const mac = await device(fs, 'mac00001');
+  const id = await mac.resolve('Back.pdf', pdfBytes('back'));
+  const doc = await mac.acquire(id);
+  doc.apply(1, [st('mac1')], []);
+  await mac.release(id);
+  await mac.deleted('Back.pdf', 1);
+  assert.deepEqual(await mac.purge(PURGE_AFTER_MS * 2, (p) => p === 'Back.pdf'), []);
+  assert.ok(fs.files.has(`${ROOT}/files/${id}/mac00001.json`));
+});
+
+test('purge of a file another device deleted happens once', async () => {
+  const fs = new MemFs();
+  const ipad = await device(fs, 'ipad0001');
+  const id = await ipad.resolve('X.pdf', pdfBytes('x'));
+  const doc = await ipad.acquire(id);
+  doc.apply(1, [st('ipd1')], []);
+  await ipad.release(id);
+  await ipad.deleted('X.pdf', 1);
+  const mac = await device(fs, 'mac00001');
+  assert.deepEqual(await mac.purge(PURGE_AFTER_MS + 1), [id]);
+  assert.deepEqual(await mac.purge(PURGE_AFTER_MS + 1), []);
+});
