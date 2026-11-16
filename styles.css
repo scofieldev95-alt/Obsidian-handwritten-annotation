@@ -225,3 +225,65 @@
   max-width: 900px;
   margin: 0 auto;
 }
+
+/* full-screen PDF view: toolbar on top, the zoomable page fills the rest */
+.hwa-pdf-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.hwa-annotator.is-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  gap: 0;
+}
+
+.hwa-annotator.is-viewport .hwa-toolbar {
+  border-radius: 0;
+  border-width: 0 0 1px 0;
+}
+
+.hwa-annotator.is-viewport .hwa-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.hwa-surface.is-viewport {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--background-secondary-alt, var(--background-secondary));
+  touch-action: none;
+}
+
+.hwa-status {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.hwa-status.is-error {
+  color: var(--text-error);
+}
+
+.hwa-sync-notice {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  z-index: 5;
+}

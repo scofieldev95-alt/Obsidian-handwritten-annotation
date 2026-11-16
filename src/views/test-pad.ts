@@ -1,29 +1,14 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 import type HandwrittenAnnotationPlugin from '../main.ts';
 import { Annotator, type PageSource } from '../surface/annotator.ts';
-import type { PageBackground } from '../surface/surface.ts';
+import { ruledA4 } from '../surface/backgrounds.ts';
 
 export const TEST_PAD_VIEW = 'hwa-test-pad';
 
-/** Blank A4 paper with faint lines. */
-const blankPage: PageBackground = {
-  width: 595,
-  height: 842,
-  draw(ctx) {
-    ctx.strokeStyle = '#dfe5ee';
-    ctx.lineWidth = 0.5;
-    for (let y = 72; y < 842 - 36; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(36, y);
-      ctx.lineTo(595 - 36, y);
-      ctx.stroke();
-    }
-  },
-};
 
 const blankSource: PageSource = {
   pageCount: 3,
-  page: async () => blankPage,
+  page: async () => ruledA4,
 };
 
 /**
@@ -61,6 +46,7 @@ export class TestPadView extends ItemView {
       source: blankSource,
       settings: this.plugin.tools,
       startPage: 1,
+      layout: 'fit',
     });
   }
 

@@ -26,6 +26,9 @@ then serve the project folder and open `harness/index.html`.
 |---|---|
 | `src/ink/` | Ink engine: smoothing, stroke geometry, eraser and lasso hit tests (no DOM, unit-tested) |
 | `src/model/` | `InkDocument`: the ink of one file, merged from every device |
+| `src/store/` | Hidden per-device ink files in `.obsidian/handwritten-annotation/`, merged on read |
+| `src/pdf/` | PDF pages via Obsidian's own PDF.js |
+| `src/obsidian-internals.ts` | The only place that uses unofficial Obsidian APIs |
 | `src/surface/` | The writable page (canvas layers, pointer input), toolbar, annotator |
 | `src/views/` | Obsidian views |
 | `tests/` | Unit tests |

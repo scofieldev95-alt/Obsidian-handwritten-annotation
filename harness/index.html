@@ -14,11 +14,13 @@
     }
     body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #fafafa; }
     #app { max-width: 760px; margin: 0 auto; }
+    body.viewport #app { max-width: none; height: calc(100vh - 32px); display: flex; flex-direction: column; }
     button { font: inherit; border: none; border-radius: 4px; background: transparent; min-width: 28px; height: 28px; }
   </style>
 </head>
 <body>
   <div id="app"></div>
-  <script src="harness.js"></script>
+  <script>if (location.search.includes("viewport")) document.body.classList.add("viewport");</script>
+  <script type="module" src="harness.js"></script>
 </body>
 </html>

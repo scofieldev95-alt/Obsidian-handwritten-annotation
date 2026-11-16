@@ -35,6 +35,13 @@ export function setIcon(el: HTMLElement, icon: string): void {
   } as Record<string, string>)[icon] ?? '?';
 }
 
+import * as pdfjs from 'pdfjs-dist';
+
+export async function loadPdfJs(): Promise<unknown> {
+  pdfjs.GlobalWorkerOptions.workerSrc = '/node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
+  return pdfjs;
+}
+
 export const Platform = { isPhone: false, isMacOS: navigator.platform.includes('Mac') };
 
 export class App {}

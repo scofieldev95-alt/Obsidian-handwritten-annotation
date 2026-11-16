@@ -18,6 +18,13 @@ export interface ToolbarActions {
   };
   /** Open full screen; omitted where we already are full screen. */
   openFull?: () => void;
+  /** Zoom controls (full-screen view only). */
+  zoom?: {
+    level(): number;
+    zoomIn(): void;
+    zoomOut(): void;
+    reset(): void;
+  };
 }
 
 const TOOL_BUTTONS: { tool: Tool; icon: string; label: string }[] = [
@@ -122,6 +129,15 @@ export class Toolbar {
       const label = nav.createEl('button', { cls: 'hwa-page-label', text: `${cur} / ${pages.count()}`, attr: { 'aria-label': 'Go to page…' } });
       label.addEventListener('click', () => pages.ask());
       button(nav, 'chevron-right', 'Next page', () => pages.go(cur + 1)).disabled = cur >= pages.count();
+    }
+
+    const zoom = this.actions.zoom;
+    if (zoom) {
+      const z = group(this.el, 'hwa-zoom');
+      button(z, 'zoom-out', 'Zoom out', () => zoom.zoomOut());
+      const pct = z.createEl('button', { cls: 'hwa-page-label', text: `${Math.round(zoom.level() * 100)}%`, attr: { 'aria-label': 'Fit width' } });
+      pct.addEventListener('click', () => zoom.reset());
+      button(z, 'zoom-in', 'Zoom in', () => zoom.zoomIn());
     }
 
     if (this.actions.openFull) {

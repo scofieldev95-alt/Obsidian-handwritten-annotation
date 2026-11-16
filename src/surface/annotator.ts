@@ -1,7 +1,7 @@
 import { App, Modal, Platform, Setting } from 'obsidian';
 import type { InkDocument } from '../model/document.ts';
 import type { SettingsStore } from '../settings.ts';
-import { InkSurface, type PageBackground } from './surface.ts';
+import { InkSurface, type PageBackground, type SurfaceLayout } from './surface.ts';
 import { Toolbar } from './toolbar.ts';
 
 /** Pages to annotate: a PDF, an image (one page) or blank paper. */
@@ -16,6 +16,7 @@ export interface AnnotatorOptions {
   source: PageSource;
   settings: SettingsStore;
   startPage: number;
+  layout: SurfaceLayout;
   openFull?: (page: number) => void;
   onPageChange?: (page: number) => void;
 }
@@ -34,7 +35,7 @@ export class Annotator {
   constructor(parent: HTMLElement, opts: AnnotatorOptions) {
     this.opts = opts;
     this.page = clampPage(opts.startPage, opts.source.pageCount);
-    this.el = parent.createDiv({ cls: 'hwa-annotator' });
+    this.el = parent.createDiv({ cls: `hwa-annotator is-${opts.layout}` });
     if (Platform.isPhone) this.el.addClass('is-phone');
     this.toolbar = new Toolbar(opts.settings, {
       undo: () => this.surface?.undo(),
@@ -50,6 +51,14 @@ export class Annotator {
         ask: () => this.askPage(),
       },
       openFull: opts.openFull ? () => opts.openFull?.(this.page) : undefined,
+      zoom: opts.layout === 'viewport'
+        ? {
+            level: () => this.surface?.zoomLevel ?? 1,
+            zoomIn: () => this.surface?.zoomBy(1.25),
+            zoomOut: () => this.surface?.zoomBy(0.8),
+            reset: () => this.surface?.resetZoom(),
+          }
+        : undefined,
     });
     this.el.appendChild(this.toolbar.el);
     this.stage = this.el.createDiv({ cls: 'hwa-stage' });
@@ -85,6 +94,7 @@ export class Annotator {
         page,
         background: bg,
         settings: this.opts.settings,
+        layout: this.opts.layout,
         onState: () => this.toolbar.render(),
       });
       this.stage.appendChild(this.surface.el);
@@ -123,6 +133,10 @@ export class Annotator {
       s.deleteSelection();
     } else if (e.key === 'Escape' && s.hasSelection()) {
       s.clearSelection();
+    } else if (this.opts.layout === 'viewport' && !mod && (e.key === 'ArrowLeft' || e.key === 'PageUp')) {
+      void this.goTo(this.page - 1);
+    } else if (this.opts.layout === 'viewport' && !mod && (e.key === 'ArrowRight' || e.key === 'PageDown')) {
+      void this.goTo(this.page + 1);
     } else {
       handled = false;
     }
