@@ -1,6 +1,6 @@
 {
   "name": "handwritten-annotation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Write by hand on PDFs and images embedded in your Obsidian notes.",
   "private": true,
   "license": "MIT",

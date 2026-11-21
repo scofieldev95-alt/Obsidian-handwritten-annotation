@@ -1,7 +1,7 @@
 {
   "id": "handwritten-annotation",
   "name": "Handwritten Annotation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.8.0",
   "description": "Write by hand on PDFs and images embedded in your notes. The ink stays with the file, syncs with your vault, and never changes the original.",
   "author": "scofieldev",
