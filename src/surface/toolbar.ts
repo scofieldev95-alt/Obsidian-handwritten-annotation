@@ -18,6 +18,8 @@ export interface ToolbarActions {
   };
   /** Open full screen; omitted where we already are full screen. */
   openFull?: () => void;
+  /** View only (reading view): just page navigation and full screen, no tools. */
+  readOnly?: boolean;
   /** Zoom controls (full-screen view only). */
   zoom?: {
     level(): number;
@@ -61,6 +63,16 @@ export class Toolbar {
   render(): void {
     const s = this.settings.data;
     this.el.empty();
+    const readOnly = this.actions.readOnly === true;
+    const multiPage = (this.actions.pages?.count() ?? 1) > 1;
+    // reading view: nothing to show for a single page, so no bar at all
+    this.el.toggleClass('hwa-toolbar-hidden', readOnly && !multiPage);
+    this.el.toggleClass('is-read-only', readOnly);
+    if (readOnly) {
+      this.el.createDiv({ cls: 'hwa-spacer' });
+      this.renderNavigation();
+      return;
+    }
 
     const tools = group(this.el, 'hwa-tools');
     for (const b of TOOL_BUTTONS) {
@@ -120,6 +132,11 @@ export class Toolbar {
     button(hist, 'undo-2', 'Undo', () => this.actions.undo()).disabled = !this.actions.canUndo();
     button(hist, 'redo-2', 'Redo', () => this.actions.redo()).disabled = !this.actions.canRedo();
 
+    this.renderNavigation();
+  }
+
+  /** Page arrows, zoom and full screen: shown in every mode. */
+  private renderNavigation(): void {
     const pages = this.actions.pages;
     if (pages && pages.count() > 1) {
       const nav = group(this.el, 'hwa-pages');

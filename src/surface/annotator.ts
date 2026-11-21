@@ -17,6 +17,8 @@ export interface AnnotatorOptions {
   settings: SettingsStore;
   startPage: number;
   layout: SurfaceLayout;
+  /** Show the ink but don't write (reading view). */
+  readOnly?: boolean;
   openFull?: (page: number) => void;
   onPageChange?: (page: number) => void;
 }
@@ -36,8 +38,10 @@ export class Annotator {
     this.opts = opts;
     this.page = clampPage(opts.startPage, opts.source.pageCount);
     this.el = parent.createDiv({ cls: `hwa-annotator is-${opts.layout}` });
+    if (opts.readOnly) this.el.addClass('is-read-only');
     if (Platform.isPhone) this.el.addClass('is-phone');
     this.toolbar = new Toolbar(opts.settings, {
+      readOnly: opts.readOnly === true,
       undo: () => this.surface?.undo(),
       redo: () => this.surface?.redo(),
       canUndo: () => this.surface?.canUndo() ?? false,
@@ -95,6 +99,7 @@ export class Annotator {
         background: bg,
         settings: this.opts.settings,
         layout: this.opts.layout,
+        readOnly: this.opts.readOnly === true,
         onState: () => this.toolbar.render(),
       });
       this.stage.appendChild(this.surface.el);
@@ -121,7 +126,7 @@ export class Annotator {
 
   private onKey(e: KeyboardEvent): void {
     const s = this.surface;
-    if (!s) return;
+    if (!s || this.opts.readOnly) return;
     const mod = Platform.isMacOS ? e.metaKey : e.ctrlKey;
     let handled = true;
     if (mod && e.key.toLowerCase() === 'z') {

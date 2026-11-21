@@ -96,6 +96,9 @@ export class InkEmbed extends Component {
         this.teardown();
         return;
       }
+      // reading view shows the ink only; the editor writes
+      if (!(await whenAttached(this.containerEl, () => this.unloaded))) return;
+      const readOnly = isReadingView(this.containerEl);
       status.remove();
       // ![[image.png|300]]: Obsidian puts the size on the container
       const width = Number(this.containerEl.getAttribute('width'));
@@ -109,6 +112,7 @@ export class InkEmbed extends Component {
         settings: this.plugin.tools,
         startPage,
         layout: 'fit',
+        readOnly,
         openFull: this.kind.openFull ? (page) => this.kind.openFull?.(this.file, page) : undefined,
         onPageChange: (page) => doc.setViewedPage(page),
       });
@@ -120,6 +124,32 @@ export class InkEmbed extends Component {
       status.addClass('is-error');
     }
   }
+}
+
+/**
+ * Is this embed in a note's reading view (or a hover preview)? Each view has its own copy of an
+ * embed, so this is decided once per copy. The nearest view container wins, so a PDF inside a note
+ * transcluded into the editor still counts as the editor.
+ */
+export function isReadingView(el: HTMLElement): boolean {
+  const host = el.closest('.markdown-source-view, .markdown-reading-view, .hover-popover');
+  return host !== null && !host.classList.contains('markdown-source-view');
+}
+
+/**
+ * Obsidian may build an embed before putting it on the page. Wait (up to ~5 s) until it is, so we
+ * can tell which view it is in. Resolves false if the embed was unloaded meanwhile.
+ */
+function whenAttached(el: HTMLElement, gone: () => boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    let frames = 0;
+    const check = () => {
+      if (gone()) resolve(false);
+      else if (el.isConnected || ++frames > 300) resolve(true);
+      else window.requestAnimationFrame(check);
+    };
+    check();
+  });
 }
 
 /** `#page=4` → 4. */

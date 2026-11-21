@@ -10,6 +10,7 @@ declare global {
     createSpan(o?: Attrs): HTMLSpanElement;
     empty(): void;
     addClass(c: string): void;
+    toggleClass(c: string, on: boolean): void;
   }
 }
 
@@ -27,6 +28,7 @@ proto.createDiv = function (o?: Attrs) { return this.createEl('div', o); };
 proto.createSpan = function (o?: Attrs) { return this.createEl('span', o); };
 proto.empty = function () { while (this.firstChild) this.removeChild(this.firstChild); };
 proto.addClass = function (c: string) { this.classList.add(c); };
+proto.toggleClass = function (c: string, on: boolean) { this.classList.toggle(c, on); };
 const holder = document.createElement('div');
 (globalThis as any).createDiv = (o?: Attrs) => { const el = holder.createDiv(o); el.remove(); return el; };
 (globalThis as any).createEl = (tag: string, o?: Attrs) => { const el = holder.createEl(tag as 'div', o); el.remove(); return el; };
@@ -48,6 +50,10 @@ export async function loadPdfJs(): Promise<unknown> {
 export const Platform = { isPhone: false, isMacOS: navigator.platform.includes('Mac') };
 
 export class App {}
+
+export class Component {
+  registerEvent() {}
+}
 
 export class Modal {
   app: unknown;

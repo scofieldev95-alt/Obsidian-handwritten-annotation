@@ -314,3 +314,19 @@
   top: 0;
   z-index: 3;
 }
+
+/* reading view: ink is shown, the page behaves like a picture */
+.hwa-toolbar.hwa-toolbar-hidden {
+  display: none;
+}
+
+.hwa-toolbar.is-read-only {
+  padding: 2px 6px;
+}
+
+.hwa-surface.is-read-only {
+  cursor: default;
+  touch-action: auto;
+  user-select: auto;
+  -webkit-user-select: auto;
+}

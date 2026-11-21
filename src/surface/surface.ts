@@ -140,6 +140,8 @@ export class InkSurface {
     background: PageBackground;
     settings: SettingsStore;
     layout: SurfaceLayout;
+    /** Show the ink only: no writing, and the page behaves like a picture (reading view). */
+    readOnly?: boolean;
     /** Called when undo/redo, the selection or the zoom changes. */
     onState: () => void;
   }) {
@@ -151,15 +153,32 @@ export class InkSurface {
     this.onState = opts.onState;
 
     this.el = createDiv({ cls: `hwa-surface is-${this.layout}` });
-    this.el.tabIndex = 0;
     this.bg = this.layer('hwa-layer-bg');
     this.hl = this.layer('hwa-layer-hl');
     this.ink = this.layer('hwa-layer-ink');
     this.live = this.layer('hwa-layer-live');
     this.overlay = this.layer('hwa-layer-overlay');
     this.applyAspect();
-    this.applyTool();
 
+    if (opts.readOnly) {
+      // no input at all: clicks, scrolling and text selection around it work as for a normal picture
+      this.el.addClass('is-read-only');
+    } else {
+      this.el.tabIndex = 0;
+      this.applyTool();
+      this.listenForInput();
+      this.cleanups.push(this.settings.on(() => this.applyTool()));
+    }
+
+    this.cleanups.push(this.doc.onChange((page) => {
+      if (page === null || page === this.page) this.onDocChange();
+    }));
+
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this.el);
+  }
+
+  private listenForInput(): void {
     this.listen(this.el, 'pointerdown', (e) => this.onDown(e as PointerEvent));
     this.listen(this.el, 'pointermove', (e) => this.onMove(e as PointerEvent));
     this.listen(this.el, 'pointerup', (e) => this.onUp(e as PointerEvent));
@@ -173,14 +192,6 @@ export class InkSurface {
     for (const type of ['mousedown', 'click', 'dblclick', 'contextmenu']) {
       this.listen(this.el, type, (e) => e.stopPropagation());
     }
-
-    this.cleanups.push(this.doc.onChange((page) => {
-      if (page === null || page === this.page) this.onDocChange();
-    }));
-    this.cleanups.push(this.settings.on(() => this.applyTool()));
-
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(this.el);
   }
 
   get pageNumber(): number {

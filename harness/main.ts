@@ -3,6 +3,7 @@ import './obsidian-stub.ts';
 import { InkDocument } from '../src/model/document.ts';
 import { DEFAULT_SETTINGS, SettingsStore } from '../src/settings.ts';
 import { Annotator } from '../src/surface/annotator.ts';
+import { isReadingView } from '../src/embed/ink-embed.ts';
 import { ruledA4 } from '../src/surface/backgrounds.ts';
 import { PdfSource } from '../src/pdf/pdf-source.ts';
 import { ImageSource } from '../src/image/image-source.ts';
@@ -24,7 +25,8 @@ const annotator = new Annotator(document.getElementById('app')!, {
   source,
   settings,
   startPage: 1,
+  readOnly: params.has('readonly'),
   layout: (new URLSearchParams(location.search).get('layout') as 'fit' | 'viewport') ?? 'fit',
 });
 
-Object.assign(window, { doc, settings, annotator });
+Object.assign(window, { doc, settings, annotator, isReadingView });
